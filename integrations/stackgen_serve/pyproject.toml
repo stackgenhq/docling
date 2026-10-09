@@ -1,0 +1,13 @@
+[build-system]
+requires = ["hatchling==1.30.1"]
+build-backend = "hatchling.build"
+
+[project]
+name = "stackgen-docling"
+version = "0.1.0"
+description = "Opt-in record-table export and StackGen Docling Serve launcher"
+requires-python = ">=3.10,<4"
+dependencies = ["docling-core==2.99.0"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/stackgen_docling"]
