@@ -42,6 +42,24 @@ def wait_ready(
     raise TimeoutError("Serve processes/factory installation timed out")
 
 
+def multipart_body(
+    boundary: str, *, filename: str, content_type: str, content: bytes
+) -> bytes:
+    """Build each upload directly so file content cannot be mistaken for headers."""
+    return (
+        (
+            f'--{boundary}\r\nContent-Disposition: form-data; name="to_formats"\r\n\r\nmd\r\n'
+            f'--{boundary}\r\nContent-Disposition: form-data; name="image_export_mode"\r\n'
+            "\r\nplaceholder\r\n"
+            f'--{boundary}\r\nContent-Disposition: form-data; name="files"; '
+            f'filename="{filename}"\r\n'
+            f"Content-Type: {content_type}\r\n\r\n"
+        ).encode()
+        + content
+        + f"\r\n--{boundary}--\r\n".encode()
+    )
+
+
 def main() -> None:
     """Verify record output in real server children, including a reload restart."""
     parser = argparse.ArgumentParser()
@@ -73,17 +91,8 @@ def main() -> None:
         if row
     ]
     boundary = "docling-record-smoke"
-    body = (
-        (
-            f'--{boundary}\r\nContent-Disposition: form-data; name="to_formats"\r\n\r\nmd\r\n'
-            f'--{boundary}\r\nContent-Disposition: form-data; name="image_export_mode"\r\n'
-            "\r\nplaceholder\r\n"
-            f'--{boundary}\r\nContent-Disposition: form-data; name="files"; '
-            'filename="records.csv"\r\n'
-            "Content-Type: text/csv\r\n\r\n"
-        ).encode()
-        + source_bytes
-        + f"\r\n--{boundary}--\r\n".encode()
+    body = multipart_body(
+        boundary, filename="records.csv", content_type="text/csv", content=source_bytes
     )
     env = {
         **os.environ,
@@ -177,12 +186,14 @@ def main() -> None:
                             not line.strip() for line in markdown.splitlines()
                         )
                         guard.check(log_path, active, pids)
-                html_body = body[: body.index(source_bytes)].replace(
-                    b'filename="records.csv"', b'filename="records.html"'
-                ).replace(b"text/csv", b"text/html") + (
-                    b"<html><body><h1>Native HTML</h1><table><tr><td>blue</td>"
-                    b"<td><b>green</b></td></tr></table></body></html>"
-                    + f"\r\n--{boundary}--\r\n".encode()
+                html_body = multipart_body(
+                    boundary,
+                    filename="records.html",
+                    content_type="text/html",
+                    content=(
+                        b"<html><body><h1>Native HTML</h1><table><tr><td>blue</td>"
+                        b"<td><b>green</b></td></tr></table></body></html>"
+                    ),
                 )
                 request = urllib.request.Request(
                     "http://127.0.0.1:5001/v1/convert/file",
