@@ -3,6 +3,7 @@
 
 import json
 from io import BytesIO
+from pathlib import Path
 from unittest.mock import patch
 
 from docling_core.transforms.serializer.markdown import (
@@ -15,16 +16,23 @@ from docling_core.types.doc import (
     CoordOrigin,
     DocItemLabel,
     DoclingDocument,
+    ImageRef,
+    ImageRefMode,
     ProvenanceItem,
     RefItem,
     RichTableCell,
     TableCell,
     TableData,
 )
+from PIL import Image
 
 from docling.datamodel.base_models import DocumentStream, InputFormat
 from docling.document_converter import DocumentConverter
-from docling.utils.table_records import RecordTableSerializer
+from docling.utils.table_records import (
+    RecordTableSerializer,
+    export_to_record_markdown,
+    save_as_record_markdown,
+)
 
 
 def _cell(row: int, column: int, text: str) -> TableCell:
@@ -115,6 +123,40 @@ def test_csv_conversion_keeps_document_cells_and_changes_only_selected_export() 
     ]
     assert values == expected
     assert doc.export_to_markdown().startswith("| Name")
+
+
+def test_record_export_helpers_keep_image_modes_and_default_output(
+    tmp_path: Path,
+) -> None:
+    doc = DoclingDocument(name="with image")
+    doc.add_table(
+        data=TableData(num_rows=1, num_cols=2, table_cells=[_cell(0, 1, "value")])
+    )
+    doc.add_picture(
+        image=ImageRef.from_pil(Image.new("RGB", (1, 1), color="red"), dpi=72)
+    )
+    standard = doc.export_to_markdown()
+
+    assert export_to_record_markdown(doc) == _render(doc)
+    assert "Record 1" in export_to_record_markdown(
+        doc, params=MarkdownParams(image_mode=ImageRefMode.PLACEHOLDER)
+    )
+    assert doc.export_to_markdown() == standard
+
+    for mode in ImageRefMode:
+        target = tmp_path / mode.value / "output.md"
+        target.parent.mkdir()
+        save_as_record_markdown(doc, target, image_mode=mode)
+        actual = target.read_text(encoding="utf-8")
+        assert 'Column 2: "value"' in actual
+        if mode == ImageRefMode.EMBEDDED:
+            assert "data:image/png;base64" in actual
+        elif mode == ImageRefMode.REFERENCED:
+            assert "output_artifacts/image_" in actual
+            assert list((target.parent / "output_artifacts").glob("*.png"))
+        else:
+            assert "<!-- image -->" in actual
+    assert doc.export_to_markdown() == standard
 
 
 def test_spans_and_header_flags_are_attached_to_origin_cell() -> None:
