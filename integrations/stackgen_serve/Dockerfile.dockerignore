@@ -1,6 +1,0 @@
-# Only the two built wheels belong in the Docker build context.
-**
-!integrations/
-!integrations/stackgen_serve/
-!integrations/stackgen_serve/dist/
-!integrations/stackgen_serve/dist/*.whl

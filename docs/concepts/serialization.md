@@ -65,6 +65,30 @@ serializer for any format by subclassing `BaseTableSerializer` and passing your
 implementation when instantiating the document serializer.
 
 
+## Record-oriented table text
+
+For wide, sparse tables, you can opt in to a record-oriented table serializer.
+It writes each source cell once, with its one-based row and column position.
+It does not build the padded `TableData.grid` during table rendering.
+
+```python
+from docling_core.transforms.serializer.markdown import MarkdownDocSerializer
+from docling.utils.table_records import RecordTableSerializer
+
+text = MarkdownDocSerializer(
+    doc=doc,
+    table_serializer=RecordTableSerializer(),
+).serialize().text
+```
+
+This is text within a Markdown export, **not** a Markdown pipe table. Missing
+positions are omitted, but explicit empty cells are present. Header flags and
+merged ranges are written beside their source cells. `RichTableCell` content is
+flattened to text; use `export_to_dict()` if you need the full document structure.
+The default `export_to_markdown()` output does not change. Conversion and the
+final output string still use memory, so this option is not a general memory
+limit for large documents.
+
 ## Examples
 
 For an example showcasing how to use serializers, see
