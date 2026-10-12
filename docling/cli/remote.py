@@ -37,6 +37,7 @@ from docling.service_client import (
     StatusWatcherKind,
 )
 from docling.utils.ocr_language import OcrLanguageResolver
+from docling.utils.table_records import MarkdownTableFormat
 
 _log = logging.getLogger(__name__)
 
@@ -173,6 +174,13 @@ def convert_remote(
             help="Output formats to produce and write locally. Defaults to Markdown.",
         ),
     ] = None,
+    markdown_table_format: Annotated[
+        MarkdownTableFormat,
+        typer.Option(
+            "--markdown-table-format",
+            help="Table output in local Markdown: default pipe tables or labeled cell records.",
+        ),
+    ] = MarkdownTableFormat.DEFAULT,
     chunker_type: ChunkerType = typer.Option(
         ChunkerType.HYBRID,
         "--chunks-type",
@@ -390,6 +398,7 @@ def convert_remote(
                 print_timings=False,
                 export_timings=False,
                 image_export_mode=resolved_image_mode,
+                markdown_table_format=markdown_table_format,
                 chunker_type=chunker_type,
                 chunk_max_tokens=chunk_max_tokens,
                 chunk_tokenizer=chunk_tokenizer,

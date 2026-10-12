@@ -18,6 +18,13 @@ print(doc.export_to_markdown())
 data = doc.export_to_dict()                 # structured / lossless
 ```
 
+For Markdown tables as labeled source-cell records, use
+`export_to_record_markdown(doc)` from `docling.utils.table_records`. It is an
+opt-in export. The default `doc.export_to_markdown()` does not change. Use
+`save_as_record_markdown(doc, "out.md", image_mode=ImageRefMode.REFERENCED)`
+to save a file and its referenced images. For other Markdown settings, pass
+`params=MarkdownParams(...)` to `export_to_record_markdown`.
+
 `result.status` reports success/failure; `result.document` is always a
 `DoclingDocument`.
 

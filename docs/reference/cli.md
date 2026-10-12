@@ -41,6 +41,7 @@ docling convert [OPTIONS] source
 | --- | --- | --- | --- |
 | `--from` | `text` (repeatable) |  | Input formats to accept. Use 'odf' for odt, ods, and odp. Defaults to all supported formats. |
 | `--to` | `md`, `json`, `yaml`, `html`, `html_split_page`, `text`, `doctags`, `vtt`, `doclang`, `dclx`, `chunks`, `latex` (repeatable) |  | Specify output formats. Defaults to Markdown. |
+| `--markdown-table-format` | `default`, `records` | `default` | Table output in Markdown: default pipe tables or labeled cell records. |
 | `--chunks-type` | `hybrid`, `hierarchical` | `hybrid` | Chunker type for '--to chunks'. |
 | `--chunks-max-tokens` | `integer` |  | Max tokens per chunk. Defaults to the tokenizer's own limit. |
 | `--chunks-tokenizer` | `text` | `sentence-transformers/all-MiniLM-L6-v2` | HuggingFace tokenizer model name/path. Used only with --chunks-type hybrid. |
@@ -131,6 +132,7 @@ docling convert-remote [OPTIONS] source
 | `--api-key` | `text` |  | API key for the service (optional; falls back to DOCLING_SERVICE_API_KEY or a .env file; omit if unauthenticated). |
 | `--from` | `docx`, `doc`, `pptx`, `ppt`, `html`, `image`, `pdf`, `asciidoc`, `md`, `csv`, `xlsx`, `xls`, `odt`, `ods`, `odp`, `xml_uspto`, `xml_jats`, `xml_xbrl`, `xml_doclang`, `dclx`, `mets_gbs`, `json_docling`, `audio`, `video`, `vtt`, `latex`, `email`, `epub`, `boxnote`, `iwork_pages`, `ebcdic` (repeatable) |  | Input formats to accept; filters directories and is sent as the server allow-list. Defaults to all supported formats. |
 | `--to` | `md`, `json`, `yaml`, `html`, `html_split_page`, `text`, `doctags`, `vtt`, `doclang`, `dclx`, `chunks`, `latex` (repeatable) |  | Output formats to produce and write locally. Defaults to Markdown. |
+| `--markdown-table-format` | `default`, `records` | `default` | Table output in local Markdown: default pipe tables or labeled cell records. |
 | `--chunks-type` | `hybrid`, `hierarchical` | `hybrid` | Chunker type for '--to chunks'. |
 | `--chunks-max-tokens` | `integer` |  | Max tokens per chunk. Defaults to the tokenizer's own limit. |
 | `--chunks-tokenizer` | `text` | `sentence-transformers/all-MiniLM-L6-v2` | HuggingFace tokenizer model name/path. Used only with --chunks-type hybrid. |

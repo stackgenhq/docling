@@ -79,5 +79,5 @@ uvx --from docling docling report.pdf --to md --output /tmp/
 
 - Always report the conversion status and (for PDFs) the page count.
 - If the user does not specify a format, ask whether they want **Markdown** (readable) or **JSON / DoclingDocument** (structured, lossless).
-- For tables, prefer `export_to_markdown()` / `export_to_dataframe()` on the table item (Python) — see [references/python-sdk.md](references/python-sdk.md).
+- For tables, prefer `export_to_markdown()` / `export_to_dataframe()` on the table item (Python) — see [references/python-sdk.md](references/python-sdk.md). For sparse tables in document Markdown, use `--markdown-table-format records` or `export_to_record_markdown(doc)`; neither changes default output.
 - If a converted PDF comes back near-empty, repeated, or full of `�`, the source is likely scanned or complex layout — retry with OCR or `--pipeline vlm` (see [references/cli.md](references/cli.md)).

@@ -141,6 +141,77 @@ def test_cli_convert(tmp_path):
     assert converted.exists()
 
 
+@pytest.mark.parametrize("table_format", ["default", "records"])
+def test_cli_markdown_table_format_is_opt_in(tmp_path, table_format):
+    source = tmp_path / "input.csv"
+    source.write_text("Name,Status\nAda,ready\nLin,\n", encoding="utf-8")
+    output = tmp_path / "out"
+
+    result = runner.invoke(
+        app,
+        [
+            str(source),
+            "--from",
+            "csv",
+            "--to",
+            "md",
+            "--to",
+            "json",
+            "--markdown-table-format",
+            table_format,
+            "--output",
+            str(output),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    markdown = (output / "input.md").read_text(encoding="utf-8")
+    if table_format == "records":
+        assert 'Column 2: ""' in markdown
+        assert "Record 3" in markdown
+        assert "| Name" not in markdown
+    else:
+        assert "| Name" in markdown
+        assert "Record 3" not in markdown
+    assert (output / "input.json").exists()
+
+
+@pytest.mark.parametrize("image_mode", ["embedded", "referenced"])
+def test_cli_record_tables_keep_image_export_mode(tmp_path, image_mode):
+    source = _write_html_image_case(
+        tmp_path / "source",
+        "index.html",
+        "<table><tr><td>Record image</td></tr></table>",
+    )
+    output = tmp_path / "out"
+    result = runner.invoke(
+        app,
+        [
+            str(source),
+            "--from",
+            "html",
+            "--to",
+            "md",
+            "--markdown-table-format",
+            "records",
+            "--image-export-mode",
+            image_mode,
+            "--html-image-fetch",
+            "local",
+            "--output",
+            str(output),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    markdown = (output / "index.md").read_text(encoding="utf-8")
+    assert 'Column 1: "Record image"' in markdown
+    if image_mode == "embedded":
+        _assert_markdown_embeds_png(output / "index.md")
+    else:
+        assert "index_artifacts/image_" in markdown
+        assert list((output / "index_artifacts").glob("*.png"))
+
+
 def test_cli_exports_doclang(tmp_path):
     source = tmp_path / "input.md"
     source.write_text("# DocLang CLI\n\nHello from Markdown.", encoding="utf-8")

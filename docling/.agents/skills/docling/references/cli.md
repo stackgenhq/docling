@@ -30,6 +30,17 @@ docling report.pdf --to md --to json --output /tmp/    # both at once
 docling report.pdf --to dclx --output-file /tmp/named-result.dclx
 ```
 
+For Markdown tables, opt in to labeled records rather than pipe tables:
+
+```bash
+docling report.pdf --to md --markdown-table-format records --output /tmp/
+```
+
+`--markdown-table-format default` is the default. It changes only Markdown
+output. The same option works with `docling convert-remote`; it changes the
+local export, not the remote service request. Record text labels actual cells
+by row and column. It is not a Markdown pipe table.
+
 Supported input formats include: `pdf`, `docx`/`doc`, `pptx`/`ppt`, `xlsx`/`xls`,
 `html`, `md`, `asciidoc`, `csv`, `odt`/`ods`/`odp`, images, `audio`, and several
 XML flavors. Restrict/force detection with `--from` (repeatable), e.g.
