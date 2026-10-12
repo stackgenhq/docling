@@ -142,6 +142,10 @@ from docling.datamodel.pipeline_options import (
 from docling.datamodel.pipeline_options_asr_model import InlineAsrOptions
 from docling.datamodel.settings import DEFAULT_PAGE_RANGE, settings
 from docling.utils.profiling import ProfilingItem
+from docling.utils.table_records import (
+    MarkdownTableFormat,
+    _save_markdown_with_table_format,
+)
 
 # The local model stack (scipy, torch, …) is absent on lightweight installs
 # (docling-slim[service-client] / docling-client).  Guard these imports so the
@@ -529,6 +533,7 @@ def export_documents(
     chunk_tokenizer: str = "sentence-transformers/all-MiniLM-L6-v2",
     debug_vlm_native_output: bool = False,
     output_file: Path | None = None,
+    markdown_table_format: MarkdownTableFormat = MarkdownTableFormat.DEFAULT,
 ):
     success_count = 0
     failure_count = 0
@@ -629,8 +634,11 @@ def export_documents(
             if export_md:
                 fname = output_file or output_dir / f"{doc_filename}.md"
                 _log.info(f"writing Markdown output to {fname}")
-                conv_res.document.save_as_markdown(
-                    filename=fname, image_mode=image_export_mode
+                _save_markdown_with_table_format(
+                    conv_res.document,
+                    fname,
+                    image_mode=image_export_mode,
+                    table_format=markdown_table_format,
                 )
                 if _is_empty_output(fname):
                     error_message = (
@@ -808,6 +816,11 @@ def convert(  # noqa: C901
     ),
     to_formats: list[OutputFormat] = typer.Option(
         None, "--to", help="Specify output formats. Defaults to Markdown."
+    ),
+    markdown_table_format: MarkdownTableFormat = typer.Option(
+        MarkdownTableFormat.DEFAULT,
+        "--markdown-table-format",
+        help="Table output in Markdown: default pipe tables or labeled cell records.",
     ),
     chunker_type: ChunkerType = typer.Option(
         ChunkerType.HYBRID,
@@ -1857,6 +1870,7 @@ def convert(  # noqa: C901
             print_timings=profiling,
             export_timings=save_profiling,
             image_export_mode=image_export_mode,
+            markdown_table_format=markdown_table_format,
             chunker_type=chunker_type,
             chunk_max_tokens=chunk_max_tokens,
             chunk_tokenizer=chunk_tokenizer,

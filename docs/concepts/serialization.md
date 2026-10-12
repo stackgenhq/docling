@@ -71,15 +71,33 @@ For wide, sparse tables, you can opt in to a record-oriented table serializer.
 It writes each source cell once, with its one-based row and column position.
 It does not build the padded `TableData.grid` during table rendering.
 
-```python
-from docling_core.transforms.serializer.markdown import MarkdownDocSerializer
-from docling.utils.table_records import RecordTableSerializer
+From Python, select the record format for one export:
 
-text = MarkdownDocSerializer(
-    doc=doc,
-    table_serializer=RecordTableSerializer(),
-).serialize().text
+```python
+from docling.document_converter import DocumentConverter
+from docling.utils.table_records import export_to_record_markdown
+
+doc = DocumentConverter().convert("input.pdf").document
+text = export_to_record_markdown(doc)
 ```
+
+Use `save_as_record_markdown(doc, "output.md", image_mode=ImageRefMode.REFERENCED)`
+if you need a file and referenced images. For other Markdown settings, pass
+`params=MarkdownParams(...)` to `export_to_record_markdown`. You can also
+select `RecordTableSerializer()` directly on a `MarkdownDocSerializer` instance.
+The `DoclingDocument` Markdown methods belong to `docling-core` and do not
+accept a table serializer.
+
+From the CLI, use `--markdown-table-format records` on `docling convert` (or
+`docling convert-remote` when writing the returned document locally):
+
+```bash
+docling convert input.csv --from csv --to md --markdown-table-format records --output ./out
+```
+
+The default is `--markdown-table-format default`. The option changes only
+Markdown output. Other formats remain unchanged. `convert-remote` applies the
+setting in the local exporter; it does not send the setting to Docling Serve.
 
 This is text within a Markdown export, **not** a Markdown pipe table. Missing
 positions are omitted, but explicit empty cells are present. Header flags and

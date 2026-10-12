@@ -9,6 +9,7 @@ The service client is faked so these run without a live docling-serve instance.
 from pathlib import Path, PurePath
 
 import pytest
+from docling_core.types.doc import DoclingDocument, TableCell, TableData
 from typer.testing import CliRunner
 
 from docling.cli.main import app
@@ -135,6 +136,57 @@ def test_remote_converts_local_file(tmp_path, _patch_client):
     assert client.health_called
     # Local files are sent as Path objects.
     assert client.captured_sources == [source]
+
+
+def test_remote_record_markdown_is_local_only(tmp_path, monkeypatch, _patch_client):
+    source = tmp_path / "report.pdf"
+    source.write_bytes(b"%PDF-1.4")
+    output = tmp_path / "out"
+    doc = DoclingDocument(name="remote")
+    doc.add_table(
+        data=TableData(
+            num_rows=1,
+            num_cols=2,
+            table_cells=[
+                TableCell(
+                    text="remote value",
+                    start_row_offset_idx=0,
+                    end_row_offset_idx=1,
+                    start_col_offset_idx=1,
+                    end_col_offset_idx=2,
+                )
+            ],
+        )
+    )
+    original_init = _FakeResult.__init__
+
+    def _with_record_document(self, name):
+        original_init(self, name)
+        self.document = doc
+
+    monkeypatch.setattr(_FakeResult, "__init__", _with_record_document)
+
+    result = runner.invoke(
+        app,
+        [
+            "convert-remote",
+            str(source),
+            "--service-url",
+            "https://docling.example.com",
+            "--markdown-table-format",
+            "records",
+            "--image-export-mode",
+            "placeholder",
+            "--output",
+            str(output),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert 'Column 2: "remote value"' in (output / "report.md").read_text()
+    opts = _FakeClient.instances[-1].captured_options
+    assert opts.image_export_mode.value == "placeholder"
+    assert "markdown_table_format" not in type(opts).model_fields
 
 
 def test_remote_url_source_stays_string(tmp_path, _patch_client):

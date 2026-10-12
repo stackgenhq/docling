@@ -3,6 +3,8 @@
 """Render table cells as labeled records without building a padded grid."""
 
 import json
+from enum import Enum
+from pathlib import Path
 from typing import Any
 
 from docling_core.transforms.serializer.base import (
@@ -11,11 +13,15 @@ from docling_core.transforms.serializer.base import (
     SerializationResult,
 )
 from docling_core.transforms.serializer.common import create_ser_result
-from docling_core.transforms.serializer.markdown import MarkdownParams
+from docling_core.transforms.serializer.markdown import (
+    MarkdownDocSerializer,
+    MarkdownParams,
+)
 from docling_core.types.doc import (
     CaptionPlacement,
     CoordOrigin,
     DoclingDocument,
+    ImageRefMode,
     NodeItem,
     ProvenanceItem,
     RichTableCell,
@@ -23,6 +29,64 @@ from docling_core.types.doc import (
     TableItem,
     TextItem,
 )
+
+
+class MarkdownTableFormat(str, Enum):
+    DEFAULT = "default"
+    RECORDS = "records"
+
+
+def export_to_record_markdown(
+    doc: DoclingDocument, *, params: MarkdownParams | None = None
+) -> str:
+    """Export Markdown with source cells labeled by row and column."""
+    return (
+        MarkdownDocSerializer(
+            doc=doc,
+            table_serializer=RecordTableSerializer(),
+            params=params if params is not None else MarkdownParams(),
+        )
+        .serialize()
+        .text
+    )
+
+
+def _save_markdown_with_table_format(
+    doc: DoclingDocument,
+    filename: str | Path,
+    *,
+    image_mode: ImageRefMode,
+    table_format: MarkdownTableFormat,
+) -> None:
+    """Save Markdown using the selected table format."""
+    if table_format == MarkdownTableFormat.RECORDS:
+        save_as_record_markdown(doc, filename, image_mode=image_mode)
+    else:
+        doc.save_as_markdown(filename=filename, image_mode=image_mode)
+
+
+def save_as_record_markdown(
+    doc: DoclingDocument,
+    filename: str | Path,
+    *,
+    image_mode: ImageRefMode = ImageRefMode.PLACEHOLDER,
+) -> None:
+    """Save record-oriented Markdown with Docling's usual image export modes."""
+    path = Path(filename)
+    # Match docling-core's save_as_markdown image preparation, including the
+    # sibling artifacts directory and image references for referenced mode.
+    artifacts_dir, reference_path = doc._get_output_paths(path)
+    if image_mode == ImageRefMode.REFERENCED:
+        artifacts_dir.mkdir(parents=True, exist_ok=True)
+    prepared = doc._make_copy_with_refmode(
+        artifacts_dir, image_mode, page_no=None, reference_path=reference_path
+    )
+    path.write_text(
+        export_to_record_markdown(
+            prepared, params=MarkdownParams(image_mode=image_mode)
+        ),
+        encoding="utf-8",
+    )
 
 
 class RecordTableSerializer(BaseTableSerializer):
