@@ -61,19 +61,52 @@ These checks do not establish PDF model behavior or upload-to-search acceptance.
 
 ## CI and publication
 
-`stackgen-serve.yml` tests native AMD64 and ARM64 images on pull requests and
-relevant `main` pushes. After both test jobs pass, a `main` push publishes
-`ghcr.io/stackgenhq/docling-serve:main` and `:sha-<commit>` as a multi-platform image.
-Manual dispatch is test-only unless `publish` is selected on `main`. PRs cannot
-publish. Publication rebuilds wheels from the tested revision with the same
-pinned base and build constraints; it does not promote the local test image IDs.
+`stackgen-serve.yml` tests native AMD64 and ARM64 images on pull requests,
+relevant `main` pushes and release tags. Publication starts only after both test
+jobs pass. It rebuilds wheels from the tested revision with the same pinned base
+and build constraints; it does not promote the local test image IDs. PRs cannot
+publish.
+
+| Trigger | Image tags |
+| --- | --- |
+| Push to `main` | `main`, `sha-<commit>` |
+| Manual run on `main` with `publish` | `main`, `sha-<commit>` |
+| Tag `vX.Y.Z` or `vX.Y.Z-hotfix.N` on `main` | `vX.Y.Z`, `X.Y.Z` (with the hotfix suffix if present) |
+| Manual run on `main` with `alias_tag` and `alias_digest` | The same release tags for an existing digest. No rebuild. |
+
+The `main` tag moves with every merge, including upstream syncs. Pin
+deployments to a release tag and its digest: `vX.Y.Z@sha256:<digest>`. The
+workflow summary shows this pin. Image labels record the release, the commit,
+and the Docling and Serve versions.
+
+### Release
+
+1. In a PR, set `version` in `integrations/stackgen_serve/pyproject.toml` to
+   the new release. A hotfix tag `vX.Y.Z-hotfix.N` keeps version `X.Y.Z`.
+2. Merge the PR. Tag the merge commit on `main` and push only that tag:
+   `git tag v0.2.0 <commit>` and `git push origin v0.2.0`.
+3. Wait for the workflow. Copy the pin from its summary to the consumers.
+
+The workflow stops if the tag is not on `main`, if the tag does not match the
+adapter version, or if the image tag exists. Do not move or reuse a release tag.
+Release a new patch or hotfix version instead.
+
+To name an existing published digest without a rebuild, tag its source commit.
+Then run the workflow manually on `main` with `alias_tag` and `alias_digest`.
+The run checks the tag and the adapter version, and requires the image revision
+label to match the tag commit. A tag on a commit whose workflow has no tag
+trigger does not start a build.
+
+Do not publish a GitHub Release. The upstream `pypi.yml` and
+`discord-release.yml` workflows run on published releases; a tag push does not
+start them. Upstream uses the same `v*` tag names (for example `v2.137.0`). Sync
+upstream with `git fetch --no-tags` and do not push upstream tags here.
 
 GHCR login uses `GITHUB_TOKEN` with package-write permission only in the publish
-job. Organisation package policy and native runner access must permit this.
-The workflow summary reports the manifest digest; deployments should use it.
-Publishing does not deploy or update downstream deployment image references.
+and alias jobs. Organisation package policy and native runner access must permit
+this. Publishing does not deploy or update downstream deployment image references.
 
-Remote CI and publication have not been executed. Local checks cover native
-ARM64 and emulated AMD64, not native AMD64 capacity. Vulnerability remediation
-is deferred; these tests are not a security approval. Production registry access,
-concurrent large uploads, and upload-through-search acceptance remain required.
+Remote CI ran native AMD64 and ARM64 tests before each `main` publication.
+Vulnerability remediation is deferred; these tests are not a security approval.
+Production registry access, concurrent large uploads, and upload-through-search
+acceptance remain required.

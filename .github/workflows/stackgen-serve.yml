@@ -8,6 +8,10 @@ on:
       - '.github/workflows/stackgen-serve.yml'
   push:
     branches: [main]
+    # Path filters do not apply to tag pushes.
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+-hotfix.*'
     paths:
       - 'docling/**'
       - 'pyproject.toml'
@@ -19,10 +23,19 @@ on:
         description: Publish the image (main branch only)
         type: boolean
         default: false
+      alias_tag:
+        description: Release tag to point at an existing digest, for example v0.1.0 (main branch only, no rebuild)
+        type: string
+        default: ''
+      alias_digest:
+        description: Existing manifest digest for alias_tag (sha256:...)
+        type: string
+        default: ''
 permissions:
   contents: read
 jobs:
   image-test:
+    if: github.event_name != 'workflow_dispatch' || inputs.alias_tag == ''
     strategy:
       fail-fast: false
       matrix:
@@ -45,8 +58,11 @@ jobs:
     needs: image-test
     if: >-
       github.repository == 'stackgenhq/docling'
-      && github.ref == 'refs/heads/main'
-      && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish))
+      && (
+        (github.ref == 'refs/heads/main'
+          && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish)))
+        || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
+      )
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -71,12 +87,56 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Reject an outdated main revision
+      - name: Check the release target and select image tags
+        id: target
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          latest=$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)
-          test "$latest" = "$GITHUB_SHA" || { echo 'Main advanced; do not overwrite its image tag.' >&2; exit 1; }
+          docling=$(sed -n 's/^version = "\([^"]*\)".*/\1/p' pyproject.toml | head -n 1)
+          serve=$(sed -n 's/^FROM .*docling-serve-cpu:\(v[^@]*\)@.*/\1/p' integrations/stackgen_serve/Dockerfile)
+          if [ -z "$docling" ] || [ -z "$serve" ]; then
+            echo 'Cannot read the Docling or Serve version.' >&2
+            exit 1
+          fi
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            version=$(sh integrations/stackgen_serve/check-release-tag.sh "$GITHUB_REF_NAME")
+            commit=$(git rev-parse HEAD)
+            status=$(gh api "repos/$GITHUB_REPOSITORY/compare/$commit...main" --jq .status)
+            case $status in
+              ahead|identical) ;;
+              *) echo "Tag $GITHUB_REF_NAME is not on main (compare status: $status)." >&2; exit 1 ;;
+            esac
+            # A release tag never moves. Stop if either image tag exists.
+            for tag in "v$version" "$version"; do
+              if out=$(docker buildx imagetools inspect "$IMAGE:$tag" 2>&1); then
+                echo "Image tag $IMAGE:$tag exists. Release a new version instead." >&2
+                exit 1
+              fi
+              case $out in
+                *"not found"*) ;;
+                *) echo "Cannot check $IMAGE:$tag: $out" >&2; exit 1 ;;
+              esac
+            done
+            pin_tag="v$version"
+            first_tag="$IMAGE:v$version"
+            second_tag="$IMAGE:$version"
+          else
+            latest=$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)
+            test "$latest" = "$GITHUB_SHA" || { echo 'Main advanced; do not overwrite its image tag.' >&2; exit 1; }
+            version=main
+            pin_tag=""
+            first_tag="$IMAGE:main"
+            second_tag="$IMAGE:sha-$GITHUB_SHA"
+          fi
+          {
+            echo "version=$version"
+            echo "pin_tag=$pin_tag"
+            echo "docling=$docling"
+            echo "serve=$serve"
+            echo 'tags<<TAGS'
+            printf '%s\n%s\n' "$first_tag" "$second_tag"
+            echo 'TAGS'
+          } >> "$GITHUB_OUTPUT"
       - name: Publish multi-platform image
         id: image
         uses: docker/build-push-action@v6
@@ -86,14 +146,84 @@ jobs:
           platforms: linux/amd64,linux/arm64
           network: none
           push: true
-          tags: |
-            ${{ env.IMAGE }}:main
-            ${{ env.IMAGE }}:sha-${{ github.sha }}
+          tags: ${{ steps.target.outputs.tags }}
           labels: |
             org.opencontainers.image.source=https://github.com/stackgenhq/docling
             org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ steps.target.outputs.version }}
+            com.stackgen.docling-slim.version=${{ steps.target.outputs.docling }}
+            com.stackgen.docling-serve.version=${{ steps.target.outputs.serve }}
       - name: Report deployment pin
         env:
           DIGEST: ${{ steps.image.outputs.digest }}
+          PIN_TAG: ${{ steps.target.outputs.pin_tag }}
         run: |
-          printf 'Published image pin: `%s@%s`\n' "$IMAGE" "$DIGEST" >> "$GITHUB_STEP_SUMMARY"
+          printf 'Published image pin: `%s%s@%s`\n' "$IMAGE" "${PIN_TAG:+:$PIN_TAG}" "$DIGEST" >> "$GITHUB_STEP_SUMMARY"
+
+  alias:
+    # Name an existing published digest as a release without a rebuild.
+    if: >-
+      github.repository == 'stackgenhq/docling'
+      && github.event_name == 'workflow_dispatch'
+      && github.ref == 'refs/heads/main'
+      && inputs.alias_tag != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
+    concurrency:
+      group: stackgen-serve-publication
+      cancel-in-progress: false
+    env:
+      IMAGE: ghcr.io/stackgenhq/docling-serve
+      TAG: ${{ inputs.alias_tag }}
+      DIGEST: ${{ inputs.alias_digest }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Check the tag, its commit and the digest
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          [[ $TAG =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-hotfix\.[0-9]+)?$ ]] \
+            || { echo "alias_tag must be vX.Y.Z or vX.Y.Z-hotfix.N." >&2; exit 1; }
+          [[ $DIGEST =~ ^sha256:[0-9a-f]{64}$ ]] \
+            || { echo 'alias_digest must be sha256:<64 hex characters>.' >&2; exit 1; }
+          git fetch --depth=1 origin "refs/tags/$TAG:refs/tags/$TAG"
+          git show "$TAG:integrations/stackgen_serve/pyproject.toml" > "$RUNNER_TEMP/pyproject.toml"
+          version=$(sh integrations/stackgen_serve/check-release-tag.sh "$TAG" "$RUNNER_TEMP/pyproject.toml")
+          commit=$(git rev-parse "$TAG^{commit}")
+          status=$(gh api "repos/$GITHUB_REPOSITORY/compare/$commit...main" --jq .status)
+          case $status in
+            ahead|identical) ;;
+            *) echo "Tag $TAG is not on main (compare status: $status)." >&2; exit 1 ;;
+          esac
+          printf '%s' "$GH_TOKEN" | skopeo login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          revision=$(skopeo inspect --override-os linux --override-arch amd64 "docker://$IMAGE@$DIGEST" \
+            | jq -r '.Labels["org.opencontainers.image.revision"] // ""')
+          test "$revision" = "$commit" \
+            || { echo "Digest revision label is '$revision', not tag commit $commit." >&2; exit 1; }
+          # A release tag never moves. Stop if either image tag exists.
+          for tag in "v$version" "$version"; do
+            if out=$(skopeo inspect --raw "docker://$IMAGE:$tag" 2>&1); then
+              echo "Image tag $IMAGE:$tag exists. Release a new version instead." >&2
+              exit 1
+            fi
+            case $out in
+              *"manifest unknown"*) ;;
+              *) echo "Cannot check $IMAGE:$tag: $out" >&2; exit 1 ;;
+            esac
+          done
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Point the release tags at the digest
+        env:
+          VERSION: ${{ steps.check.outputs.version }}
+        run: |
+          for tag in "v$VERSION" "$VERSION"; do
+            skopeo copy --all --preserve-digests "docker://$IMAGE@$DIGEST" "docker://$IMAGE:$tag"
+            actual="sha256:$(skopeo inspect --raw "docker://$IMAGE:$tag" | sha256sum | cut -d ' ' -f 1)"
+            test "$actual" = "$DIGEST" \
+              || { echo "$IMAGE:$tag resolves to $actual, not $DIGEST." >&2; exit 1; }
+          done
+          printf 'Published image pin: `%s:v%s@%s`\n' "$IMAGE" "$VERSION" "$DIGEST" >> "$GITHUB_STEP_SUMMARY"
