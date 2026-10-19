@@ -71,8 +71,8 @@ publish.
 | --- | --- |
 | Push to `main` | `main`, `sha-<commit>` |
 | Manual run on `main` with `publish` | `main`, `sha-<commit>` |
-| Tag `vX.Y.Z` or `vX.Y.Z-hotfix.N` on `main` | `vX.Y.Z`, `X.Y.Z` (with the hotfix suffix if present) |
-| Manual run on `main` with `alias_tag` and `alias_digest` | The same release tags for an existing digest. No rebuild. |
+| Tag `vX.Y.Z` or `vX.Y.Z-hotfix.N` on `main` | The same name: `vX.Y.Z` or `vX.Y.Z-hotfix.N` |
+| Manual run on `main` with `alias_tag` and `alias_digest` | The same release tag for an existing digest. No rebuild. |
 
 The `main` tag moves with every merge, including upstream syncs. Pin
 deployments to a release tag and its digest: `vX.Y.Z@sha256:<digest>`. The

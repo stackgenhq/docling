@@ -106,36 +106,30 @@ jobs:
               ahead|identical) ;;
               *) echo "Tag $GITHUB_REF_NAME is not on main (compare status: $status)." >&2; exit 1 ;;
             esac
-            # A release tag never moves. Stop if either image tag exists.
-            for tag in "v$version" "$version"; do
-              if out=$(docker buildx imagetools inspect "$IMAGE:$tag" 2>&1); then
-                echo "Image tag $IMAGE:$tag exists. Release a new version instead." >&2
-                exit 1
-              fi
-              case $out in
-                *"not found"*) ;;
-                *) echo "Cannot check $IMAGE:$tag: $out" >&2; exit 1 ;;
-              esac
-            done
+            # A release tag never moves. Stop if the image tag exists.
+            if out=$(docker buildx imagetools inspect "$IMAGE:v$version" 2>&1); then
+              echo "Image tag $IMAGE:v$version exists. Release a new version instead." >&2
+              exit 1
+            fi
+            case $out in
+              *"not found"*) ;;
+              *) echo "Cannot check $IMAGE:v$version: $out" >&2; exit 1 ;;
+            esac
             pin_tag="v$version"
-            first_tag="$IMAGE:v$version"
-            second_tag="$IMAGE:$version"
+            tags="$IMAGE:v$version"
           else
             latest=$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)
             test "$latest" = "$GITHUB_SHA" || { echo 'Main advanced; do not overwrite its image tag.' >&2; exit 1; }
             version=main
             pin_tag=""
-            first_tag="$IMAGE:main"
-            second_tag="$IMAGE:sha-$GITHUB_SHA"
+            tags="$IMAGE:main,$IMAGE:sha-$GITHUB_SHA"
           fi
           {
             echo "version=$version"
             echo "pin_tag=$pin_tag"
             echo "docling=$docling"
             echo "serve=$serve"
-            echo 'tags<<TAGS'
-            printf '%s\n%s\n' "$first_tag" "$second_tag"
-            echo 'TAGS'
+            echo "tags=$tags"
           } >> "$GITHUB_OUTPUT"
       - name: Publish multi-platform image
         id: image
@@ -204,26 +198,22 @@ jobs:
             | jq -r '.Labels["org.opencontainers.image.revision"] // ""')
           test "$revision" = "$commit" \
             || { echo "Digest revision label is '$revision', not tag commit $commit." >&2; exit 1; }
-          # A release tag never moves. Stop if either image tag exists.
-          for tag in "v$version" "$version"; do
-            if out=$(skopeo inspect --raw "docker://$IMAGE:$tag" 2>&1); then
-              echo "Image tag $IMAGE:$tag exists. Release a new version instead." >&2
-              exit 1
-            fi
-            case $out in
-              *"manifest unknown"*) ;;
-              *) echo "Cannot check $IMAGE:$tag: $out" >&2; exit 1 ;;
-            esac
-          done
+          # A release tag never moves. Stop if the image tag exists.
+          if out=$(skopeo inspect --raw "docker://$IMAGE:v$version" 2>&1); then
+            echo "Image tag $IMAGE:v$version exists. Release a new version instead." >&2
+            exit 1
+          fi
+          case $out in
+            *"manifest unknown"*) ;;
+            *) echo "Cannot check $IMAGE:v$version: $out" >&2; exit 1 ;;
+          esac
           echo "version=$version" >> "$GITHUB_OUTPUT"
-      - name: Point the release tags at the digest
+      - name: Point the release tag at the digest
         env:
           VERSION: ${{ steps.check.outputs.version }}
         run: |
-          for tag in "v$VERSION" "$VERSION"; do
-            skopeo copy --all --preserve-digests "docker://$IMAGE@$DIGEST" "docker://$IMAGE:$tag"
-            actual="sha256:$(skopeo inspect --raw "docker://$IMAGE:$tag" | sha256sum | cut -d ' ' -f 1)"
-            test "$actual" = "$DIGEST" \
-              || { echo "$IMAGE:$tag resolves to $actual, not $DIGEST." >&2; exit 1; }
-          done
+          skopeo copy --all --preserve-digests "docker://$IMAGE@$DIGEST" "docker://$IMAGE:v$VERSION"
+          actual="sha256:$(skopeo inspect --raw "docker://$IMAGE:v$VERSION" | sha256sum | cut -d ' ' -f 1)"
+          test "$actual" = "$DIGEST" \
+            || { echo "$IMAGE:v$VERSION resolves to $actual, not $DIGEST." >&2; exit 1; }
           printf 'Published image pin: `%s:v%s@%s`\n' "$IMAGE" "$VERSION" "$DIGEST" >> "$GITHUB_STEP_SUMMARY"
