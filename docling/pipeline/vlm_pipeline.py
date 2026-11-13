@@ -55,6 +55,7 @@ from docling.datamodel.pipeline_options_vlm_model import (
     InlineVlmOptions,
     ResponseFormat,
 )
+from docling.datamodel.progress import ProgressReporter
 from docling.datamodel.settings import settings
 
 # VlmResponseFormat is actually ResponseFormat from pipeline_options_vlm_model
@@ -68,9 +69,21 @@ from docling.models.vlm_pipeline_models.mlx_model import HuggingFaceMlxModel
 from docling.pipeline.base_pipeline import PaginatedPipeline
 from docling.utils.deepseekocr_utils import parse_deepseekocr_markdown
 from docling.utils.profiling import TimeRecorder
+from docling.utils.vlm_utils import normalize_section_header_levels
 
 _log = logging.getLogger(__name__)
 _DOCLANG_OPEN_RE = re.compile(r"<doclang(?:\s[^>]*)?>")
+# Formats whose mappers keep raw heading depths per page; the joined document is normalized.
+_RAW_HEADING_DEPTH_FORMATS = frozenset(
+    {
+        ResponseFormat.CHANDRA_HTML,
+        ResponseFormat.DEEPSEEKOCR_MARKDOWN,
+        ResponseFormat.DOTS_JSON,
+        ResponseFormat.NEMOTRON_PARSE_V2,
+        ResponseFormat.NEMOTRON_PARSE_V3_5,
+        ResponseFormat.UNLIMITED_OCR_MARKDOWN,
+    }
+)
 
 
 class VlmPipeline(PaginatedPipeline):
@@ -108,12 +121,17 @@ class VlmPipeline(PaginatedPipeline):
                     provenance.page_no = page.page_no
 
         original_document, original_pages = conv_res.document, conv_res.pages
+        original_progress = conv_res._progress
         try:
             conv_res.document = document
             conv_res.pages = [page]
+            # The page is reported once its pictures are enriched, so its page
+            # event covers this work; per-page item counts would only add noise.
+            conv_res._progress = ProgressReporter()
             super()._enrich_document(conv_res)
         finally:
             conv_res.document, conv_res.pages = original_document, original_pages
+            conv_res._progress = original_progress
 
     def _initialize_new_runtime_system(
         self, pipeline_options: VlmPipelineOptions
@@ -270,6 +288,9 @@ class VlmPipeline(PaginatedPipeline):
                 page._backend = page_backend
                 if not page_backend.is_valid():
                     failed_page_nos.add(page.page_no)
+                    conv_res._progress.page_completed(
+                        page.page_no, total_pages=len(pages_by_no), success=False
+                    )
                     conv_res.errors.append(
                         ErrorItem(
                             component_type=DoclingComponentType.DOCUMENT_BACKEND,
@@ -290,6 +311,7 @@ class VlmPipeline(PaginatedPipeline):
                     page_batch=page_batch,
                     page_documents=page_documents,
                     processed_page_nos=processed_page_nos,
+                    total_pages=len(pages_by_no),
                 )
                 page_batch = []
                 if self._document_timed_out(
@@ -306,6 +328,7 @@ class VlmPipeline(PaginatedPipeline):
                     page_batch=page_batch,
                     page_documents=page_documents,
                     processed_page_nos=processed_page_nos,
+                    total_pages=len(pages_by_no),
                 )
                 self._document_timed_out(
                     conv_res=conv_res,
@@ -317,6 +340,9 @@ class VlmPipeline(PaginatedPipeline):
             page_iterator.close()
             for page in pages_by_no.values():
                 self._release_page_resources(page)
+        conv_res._progress.fail_unfinished_pages(
+            expected_page_nos, total_pages=len(pages_by_no)
+        )
 
         if not any(
             error.category == FailureCategory.TIMEOUT for error in conv_res.errors
@@ -339,7 +365,7 @@ class VlmPipeline(PaginatedPipeline):
             for page_no in expected_page_nos
             if page_no in processed_page_nos
         ]
-        conv_res.document = self._concatenate_page_documents(
+        conv_res.document = self._join_page_documents(
             [
                 (page_no, page_documents[page_no])
                 for page_no in expected_page_nos
@@ -348,6 +374,15 @@ class VlmPipeline(PaginatedPipeline):
         )
         return conv_res
 
+    def _join_page_documents(
+        self, page_documents: list[tuple[int, DoclingDocument]]
+    ) -> DoclingDocument:
+        document = self._concatenate_page_documents(page_documents)
+        if self._response_format() in _RAW_HEADING_DEPTH_FORMATS:
+            # Once per document, so a heading depth has one level on all pages.
+            normalize_section_header_levels(document)
+        return document
+
     def _process_page_batch(
         self,
         *,
@@ -355,6 +390,7 @@ class VlmPipeline(PaginatedPipeline):
         page_batch: list[Page],
         page_documents: dict[int, DoclingDocument],
         processed_page_nos: set[int],
+        total_pages: int,
     ) -> None:
         try:
             for page in self._apply_on_pages(conv_res, page_batch):
@@ -364,6 +400,9 @@ class VlmPipeline(PaginatedPipeline):
                 self._enrich_page_document(conv_res, page, document)
                 page_documents[page.page_no] = document
                 processed_page_nos.add(page.page_no)
+                conv_res._progress.page_completed(
+                    page.page_no, total_pages=total_pages, success=True
+                )
         finally:
             for page in page_batch:
                 self._release_page_resources(page)
@@ -507,6 +546,7 @@ class VlmPipeline(PaginatedPipeline):
                 page_no=page.page_no,
                 filename=conv_res.input.file.name or "file",
                 page_image=page.image,
+                normalize_heading_levels=False,
             )
         elif response_format == ResponseFormat.UNLIMITED_OCR_MARKDOWN:
             from docling.utils.deepseekocr_utils import parse_unlimited_ocr_markdown
@@ -517,6 +557,7 @@ class VlmPipeline(PaginatedPipeline):
                 page_no=page.page_no,
                 filename=conv_res.input.file.name or "file",
                 page_image=page.image,
+                normalize_heading_levels=False,
             )
         elif response_format == ResponseFormat.MARKDOWN:
             document = self._convert_text_page(
@@ -536,6 +577,7 @@ class VlmPipeline(PaginatedPipeline):
                     page_no=page.page_no,
                     filename=conv_res.input.file.name or "file",
                     page_image=page.image,
+                    normalize_heading_levels=False,
                 )
             except ValueError as exc:
                 conv_res.errors.append(
@@ -555,6 +597,19 @@ class VlmPipeline(PaginatedPipeline):
         elif response_format == ResponseFormat.NEMOTRON_PARSE_V2:
             document = self._nemotron_parse_v2_page_document(
                 conv_res, page, predicted_text, page.image
+            )
+        elif response_format == ResponseFormat.NEMOTRON_PARSE_V3_5:
+            from docling.utils.nemotron_parse_v3_5_utils import (
+                parse_nemotron_parse_v3_5,
+            )
+
+            document = parse_nemotron_parse_v3_5(
+                content=predicted_text,
+                original_page_size=page.size,
+                page_no=page.page_no,
+                filename=conv_res.input.file.name or "file",
+                page_image=page.image,
+                normalize_heading_levels=False,
             )
         elif response_format == ResponseFormat.MINERU2:
             from docling.utils.mineru_utils import parse_mineru2
@@ -673,6 +728,7 @@ class VlmPipeline(PaginatedPipeline):
             filename=conv_res.input.file.name or "file",
             page_image=page_image,
             model_image_size=model_image_size,
+            normalize_heading_levels=False,
         )
 
     def _nemotron_parse_v2_page_document(
@@ -710,6 +766,7 @@ class VlmPipeline(PaginatedPipeline):
             page_no=page.page_no,
             filename=conv_res.input.file.name or "file",
             page_image=page_image,
+            normalize_heading_levels=False,
         )
 
     def _extract_code_block(self, text: str) -> str:
