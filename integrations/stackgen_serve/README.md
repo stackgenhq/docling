@@ -13,10 +13,15 @@ and output still use memory; this is not protection against all OOM failures.
 
 This repository owns the exporter and Serve startup adapter. The image installs
 both wheels built from this checkout. It uses the digest-pinned upstream
-`docling-serve-cpu` base: Serve 1.36.0, Core 2.99.0 and Jobkit 3.8.1. It supports
+`docling-serve-cpu` base: Serve 1.38.2, Core 2.104.0 and Jobkit 3.9.1. It supports
 CPU execution, not GPU/CUDA. Runtime installation is offline with `--no-deps`;
 other base dependencies are not upgraded. Do not install an overlapping legacy
 `docling` distribution alongside `docling-slim`.
+
+The build removes the base `rsync` package (RHSA-2026:67462). No package needs
+it; only the unused Ray autoscaler calls it. The build also deletes the
+`transformers` `testing_utils` bytecode, because Xray reports its example keys as
+exposed secrets. The image tests fail if either comes back.
 
 The launcher enables the exporter before Serve imports. An importable factory
 also enables it in spawned workers and reload children. Importing the adapter
@@ -99,7 +104,7 @@ trigger does not start a build.
 
 Do not publish a GitHub Release. The upstream `pypi.yml` and
 `discord-release.yml` workflows run on published releases; a tag push does not
-start them. Upstream uses the same `v*` tag names (for example `v2.137.0`). Sync
+start them. Upstream uses the same `v*` tag names (for example `v2.142.1`). Sync
 upstream with `git fetch --no-tags` and do not push upstream tags here.
 
 GHCR login uses `GITHUB_TOKEN` with package-write permission only in the publish

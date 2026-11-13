@@ -24,9 +24,9 @@ def install() -> None:
     An explicit table_serializer passed by a caller still overrides the default.
     """
     expected = {
-        "docling-core": "2.99.0",
-        "docling-serve": "1.36.0",
-        "docling-jobkit": "3.8.1",
+        "docling-core": "2.104.0",
+        "docling-serve": "1.38.2",
+        "docling-jobkit": "3.9.1",
     }
     for distribution, pinned in expected.items():
         installed = version(distribution)
