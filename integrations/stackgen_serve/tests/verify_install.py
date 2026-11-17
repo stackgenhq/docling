@@ -10,13 +10,16 @@ from pathlib import Path
 
 
 def check_xray_blockers() -> None:
-    """Fail if the image again ships rsync or the testing_utils bytecode with example keys."""
+    """Fail if the image ships rsync or the transformers testing_utils module."""
     assert shutil.which("rsync") is None, "rsync is installed"
     spec = find_spec("transformers")
     assert spec is not None and spec.submodule_search_locations
+    leaked: list[Path] = []
     for location in spec.submodule_search_locations:
-        leaked = sorted(Path(location).glob("__pycache__/testing_utils*.pyc"))
-        assert not leaked, leaked
+        root = Path(location)
+        leaked.extend(root.glob("testing_utils.py"))
+        leaked.extend(root.glob("__pycache__/testing_utils*.pyc"))
+    assert not leaked, leaked
 
 
 def main() -> None:
