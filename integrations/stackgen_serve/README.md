@@ -19,9 +19,14 @@ other base dependencies are not upgraded. Do not install an overlapping legacy
 `docling` distribution alongside `docling-slim`.
 
 The build removes the base `rsync` package (RHSA-2026:67462). No package needs
-it; only the unused Ray autoscaler calls it. The build also deletes the
-`transformers` `testing_utils` bytecode, because Xray reports its example keys as
-exposed secrets. The image tests fail if either comes back.
+it. Only the unused Ray autoscaler calls it. The build also deletes
+`transformers` `testing_utils.py` and its bytecode. Xray reports the example
+keys in that module as secrets. Xray reads every layer, so a delete in a later
+layer still leaves the file in the base layer. The final stage copies the
+merged filesystem onto a new image. The published image has that filesystem
+and no base layers. Image tests fail if `rsync` or `testing_utils` is present,
+if the image has more than two layers, or if the runtime configuration differs
+from the base image.
 
 The launcher enables the exporter before Serve imports. An importable factory
 also enables it in spawned workers and reload children. Importing the adapter
@@ -111,7 +116,9 @@ GHCR login uses `GITHUB_TOKEN` with package-write permission only in the publish
 and alias jobs. Organisation package policy and native runner access must permit
 this. Publishing does not deploy or update downstream deployment image references.
 
-Remote CI ran native AMD64 and ARM64 tests before each `main` publication.
-Vulnerability remediation is deferred; these tests are not a security approval.
+Remote CI runs native AMD64 and ARM64 tests before each `main` publication.
+Those tests check this image. They are not an Xray approval. System Python
+3.9.25-10.el9 stays in the image. `dnf` and `rpm` need it, and the fixed build
+is not in the CentOS Stream 9 repositories.
 Production registry access, concurrent large uploads, and upload-through-search
 acceptance remain required.
