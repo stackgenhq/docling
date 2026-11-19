@@ -1,0 +1,7 @@
+# AlmaLinux rebuild of RHSA-2026:98533. Fixes CVE-2026-115557.
+# The CentOS Stream mirror used by the base image still has 3.9.25-10.el9.
+# Xray names the fixed build 3.9.25-16.el9_9. Install both packages together.
+amd64 python3-3.9.25-16.el9_9.x86_64.rpm 36279036c5872a9f1c25d01b95054c4c825fc3df0e77189948269c61160fe777 https://repo.almalinux.org/almalinux/9/BaseOS/x86_64/os/Packages/python3-3.9.25-16.el9_9.x86_64.rpm
+amd64 python3-libs-3.9.25-16.el9_9.x86_64.rpm 651d7828d7a2cb1c84c3a887df5a847dfdb67754f381055d25c5bf8ccac477b4 https://repo.almalinux.org/almalinux/9/BaseOS/x86_64/os/Packages/python3-libs-3.9.25-16.el9_9.x86_64.rpm
+arm64 python3-3.9.25-16.el9_9.aarch64.rpm b88a35b89bb3c0b5f2287b9c99a75bfabb12e257bb294a2177d34b57bb0d8eee https://repo.almalinux.org/almalinux/9/BaseOS/aarch64/os/Packages/python3-3.9.25-16.el9_9.aarch64.rpm
+arm64 python3-libs-3.9.25-16.el9_9.aarch64.rpm fb859e0fd1859ea727c63d72c1aa399cb0154fc6cacfa58920e38ecc51e6d64a https://repo.almalinux.org/almalinux/9/BaseOS/aarch64/os/Packages/python3-libs-3.9.25-16.el9_9.aarch64.rpm

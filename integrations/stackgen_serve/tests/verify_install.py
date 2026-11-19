@@ -3,6 +3,7 @@
 import hashlib
 import json
 import shutil
+import subprocess
 import sys
 from importlib.metadata import distribution
 from importlib.util import find_spec
@@ -22,6 +23,20 @@ def check_xray_blockers() -> None:
     assert not leaked, leaked
 
 
+def check_system_python() -> None:
+    """Require python3 3.9.25-16.el9_9, the fix for CVE-2026-115557."""
+    completed = subprocess.run(
+        ["rpm", "-q", "python3", "python3-libs"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr.strip()
+    installed = [line for line in completed.stdout.splitlines() if line]
+    stale = [line for line in installed if "3.9.25-16.el9_9" not in line]
+    assert installed and not stale, installed
+
+
 def main() -> None:
     manifest = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
     installed = distribution(manifest["distribution"])
@@ -32,6 +47,7 @@ def main() -> None:
         ).hexdigest()
         assert actual == expected, relative
     check_xray_blockers()
+    check_system_python()
     print(
         json.dumps(
             {

@@ -14,9 +14,15 @@ and output still use memory; this is not protection against all OOM failures.
 This repository owns the exporter and Serve startup adapter. The image installs
 both wheels built from this checkout. It uses the digest-pinned upstream
 `docling-serve-cpu` base: Serve 1.38.2, Core 2.104.0 and Jobkit 3.9.1. It supports
-CPU execution, not GPU/CUDA. Runtime installation is offline with `--no-deps`;
-other base dependencies are not upgraded. Do not install an overlapping legacy
+CPU execution, not GPU/CUDA. Runtime installation is offline with `--no-deps`.
+Wheel dependencies stay at the base image versions. Do not install an overlapping legacy
 `docling` distribution alongside `docling-slim`.
+
+The build installs pinned AlmaLinux `python3` and `python3-libs` 3.9.25-16.el9_9
+before the filesystem copy. That is the build Xray names for CVE-2026-115557
+(RHSA-2026:98533). The CentOS Stream mirror used by the base image still has
+3.9.25-10.el9. `dnf` and `rpm` keep system Python 3.9. The application stays
+on Python 3.12. No other base package is upgraded.
 
 The build removes the base `rsync` package (RHSA-2026:67462). No package needs
 it. Only the unused Ray autoscaler calls it. The build also deletes
@@ -25,6 +31,7 @@ keys in that module as secrets. Xray reads every layer, so a delete in a later
 layer still leaves the file in the base layer. The final stage copies the
 merged filesystem onto a new image. The published image has that filesystem
 and no base layers. Image tests fail if `rsync` or `testing_utils` is present,
+if system `python3` or `python3-libs` is not 3.9.25-16.el9_9,
 if the image has more than two layers, or if the runtime configuration differs
 from the base image.
 
@@ -117,8 +124,8 @@ and alias jobs. Organisation package policy and native runner access must permit
 this. Publishing does not deploy or update downstream deployment image references.
 
 Remote CI runs native AMD64 and ARM64 tests before each `main` publication.
-Those tests check this image. They are not an Xray approval. System Python
-3.9.25-10.el9 stays in the image. `dnf` and `rpm` need it, and the fixed build
-is not in the CentOS Stream 9 repositories.
+Those tests check this image. They are not an Xray approval. The published
+image contains system `python3` and `python3-libs` 3.9.25-16.el9_9. `dnf` and
+`rpm` need system Python 3.9. The application stays on Python 3.12.
 Production registry access, concurrent large uploads, and upload-through-search
 acceptance remain required.
