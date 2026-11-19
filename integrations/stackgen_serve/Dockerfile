@@ -1,9 +1,62 @@
 # Build the wheels from this checkout before building with the repository root context.
 # CPU execution only. Use the upstream CPU variant instead of CUDA dependencies.
 FROM ghcr.io/docling-project/docling-serve-cpu:v1.38.2@sha256:7a480a1604fa3b42efeddc7db9527690d9f9bc903226136013e2bfe6b1a4dfb0 AS cleaned
+# The base image repository still has python3 3.9.25-10.el9 (CVE-2026-115557).
+# Xray names the fix 3.9.25-16.el9_9. AlmaLinux publishes that build.
+# Install the pinned RPMs before the filesystem copy. dnf and rpm need Python 3.9.
+# Do not upgrade any other package.
 # The base ships a vulnerable rsync (RHSA-2026:67462) and no package requires it.
-# Only the unused Ray autoscaler calls it. Remove it offline; do not upgrade packages.
+# Only the unused Ray autoscaler calls it. Remove it offline.
+ARG TARGETARCH
+COPY integrations/stackgen_serve/python3-rpms.txt /tmp/python3-rpms.txt
+COPY integrations/stackgen_serve/rpms/${TARGETARCH}/ /tmp/python3-rpms/
 USER 0
+RUN /usr/bin/python3 - <<'PY'
+import hashlib
+import os
+import pathlib
+import subprocess
+
+machine = {"x86_64": "amd64", "aarch64": "arm64"}[os.uname().machine]
+root = pathlib.Path("/tmp/python3-rpms")
+expected = []
+for line in pathlib.Path("/tmp/python3-rpms.txt").read_text(encoding="utf-8").splitlines():
+    stripped = line.strip()
+    if not stripped or stripped.startswith("#"):
+        continue
+    arch, filename, sha, _url = stripped.split()
+    if arch == machine:
+        expected.append((filename, sha))
+if len(expected) != 2:
+    raise SystemExit(f"Expected 2 RPMs for {machine}, found {len(expected)}.")
+present = sorted(path.name for path in root.glob("*.rpm"))
+names = sorted(name for name, _sha in expected)
+if present != names:
+    raise SystemExit(f"RPM files {present} do not match {names}.")
+for filename, sha in expected:
+    digest = hashlib.sha256((root / filename).read_bytes()).hexdigest()
+    if digest != sha:
+        raise SystemExit(f"{filename} sha256 {digest} != {sha}.")
+subprocess.run(
+    ["rpm", "-Uvh", *[str(root / filename) for filename, _sha in expected]],
+    check=True,
+)
+completed = subprocess.run(
+    ["rpm", "-q", "python3", "python3-libs"],
+    check=True,
+    capture_output=True,
+    text=True,
+)
+installed = [line for line in completed.stdout.splitlines() if line]
+stale = [line for line in installed if "3.9.25-16.el9_9" not in line]
+if not installed or stale:
+    raise SystemExit(f"Unexpected system Python: {installed}")
+print("\n".join(installed))
+for path in root.glob("*"):
+    path.unlink()
+root.rmdir()
+pathlib.Path("/tmp/python3-rpms.txt").unlink()
+PY
 RUN rpm -e rsync && ! rpm -q rsync
 USER 1001
 COPY --chown=1001:0 integrations/stackgen_serve/dist/*.whl /tmp/fork-wheels/

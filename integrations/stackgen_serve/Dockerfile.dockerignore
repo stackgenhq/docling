@@ -4,3 +4,9 @@
 !integrations/stackgen_serve/
 !integrations/stackgen_serve/dist/
 !integrations/stackgen_serve/dist/*.whl
+!integrations/stackgen_serve/python3-rpms.txt
+!integrations/stackgen_serve/rpms/
+!integrations/stackgen_serve/rpms/amd64/
+!integrations/stackgen_serve/rpms/arm64/
+!integrations/stackgen_serve/rpms/amd64/*.rpm
+!integrations/stackgen_serve/rpms/arm64/*.rpm

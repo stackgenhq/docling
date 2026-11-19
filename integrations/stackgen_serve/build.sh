@@ -4,4 +4,5 @@ set -eu
 rm -f integrations/stackgen_serve/dist/*.whl
 uv build --wheel --build-constraints integrations/stackgen_serve/build-constraints.txt --out-dir integrations/stackgen_serve/dist
 uv build --wheel --build-constraints integrations/stackgen_serve/build-constraints.txt integrations/stackgen_serve --out-dir integrations/stackgen_serve/dist
+sh integrations/stackgen_serve/fetch-python3-rpms.sh
 docker build --network=none -f integrations/stackgen_serve/Dockerfile -t stackgen-docling:fork-review .
